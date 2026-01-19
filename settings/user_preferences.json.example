@@ -1,0 +1,15 @@
+{
+  "default_save_path": "",
+  "default_data_path": "",
+  "font_name": "Times New Roman",
+  "label_fontsize": 25,
+  "tick_fontsize": 25,
+  "legend_fontsize": 20,
+  "default_tx": [
+    20,
+    50,
+    80
+  ],
+  "calibration_slope": -995.32,
+  "calibration_intercept": 101.36
+}

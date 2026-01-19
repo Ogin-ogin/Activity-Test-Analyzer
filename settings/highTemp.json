@@ -1,0 +1,39 @@
+{
+  "name": "highTemp",
+  "steps": [
+    {
+      "temperature": 800.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 750.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 700.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 650.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 600.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 550.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 500.0,
+      "hold_time": 20
+    },
+    {
+      "temperature": 450.0,
+      "hold_time": 20
+    }
+  ],
+  "ramp_time": 10,
+  "analysis_time": 10
+}

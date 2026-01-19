@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code local settings
+.claude/
+
+# User preferences (contains personal paths)
+settings/user_preferences.json
+
+# Distribution files
+*.zip
+
+# Reference materials (may contain proprietary data)
+参考資料/
+
+# OS files
+.DS_Store
+Thumbs.db
