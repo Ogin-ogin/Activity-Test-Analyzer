@@ -24,15 +24,44 @@ FT-IR測定によるベンゼン酸化活性試験のデータを自動解析す
 
 ### 1. Pythonのインストール
 
-まだPythonがインストールされていない場合は、[Python公式サイト](https://www.python.org/downloads/)から最新版をダウンロードしてインストールしてください。
+まだPythonがインストールされていない場合は、[Python公式サイト](https://www.python.org/downloads/)から最新版（3.8以上）をダウンロードしてインストールしてください。
 
-### 2. 必要なパッケージのインストール
+インストール時に **「Add Python to PATH」にチェック** を入れてください。
 
-zipファイルを解凍したフォルダで、コマンドプロンプト（またはターミナル）を開き、以下のコマンドを実行してください：
+### 2. リポジトリのクローン（ダウンロード）
+
+#### 方法A: Gitを使う場合（推奨）
+
+コマンドプロンプト（またはターミナル）で以下を実行：
+
+```bash
+git clone https://github.com/Ogin-ogin/Activity-Test-Analyzer.git
+cd Activity-Test-Analyzer
+```
+
+#### 方法B: ZIPでダウンロードする場合
+
+1. [こちら](https://github.com/Ogin-ogin/Activity-Test-Analyzer/archive/refs/heads/main.zip)からZIPファイルをダウンロード
+2. 解凍して任意の場所に配置
+3. コマンドプロンプトでそのフォルダに移動
+
+### 3. 必要なパッケージのインストール
+
+クローン（または解凍）したフォルダで、コマンドプロンプト（またはターミナル）を開き、以下のコマンドを実行してください：
 
 ```bash
 pip install -r requirements.txt
 ```
+
+### 4. 初回設定（オプション）
+
+`settings/user_preferences.json.example` を `settings/user_preferences.json` にコピーして、お好みの設定に変更できます：
+
+```bash
+copy settings\user_preferences.json.example settings\user_preferences.json
+```
+
+設定しなくてもアプリは動作します。
 
 ## 使い方
 
