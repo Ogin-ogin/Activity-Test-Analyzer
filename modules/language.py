@@ -107,6 +107,33 @@ TEXTS = {
         'calibration_intercept': '切片',
         'calibration_formula': '計算式: 転換率(%) = 傾き × 強度 + 切片',
         'calibration_saved': '検量線設定が保存されました',
+
+        # Semi-auto mode
+        'measurement_mode': '測定モード',
+        'standard_mode': '通常モード',
+        'semi_auto_mode': '半自動モード',
+        'num_reactors': '反応管数',
+        'reactor': '反応管',
+        'reactor_n': '反応管{}',
+        'comparison': '比較',
+        'comparison_table': 'TX値比較表',
+        'semi_auto_mode_help': '複数の反応管を交互に測定する場合に使用',
+
+        # Multi-file comparison mode
+        'multi_file_mode': '複数ファイル比較モード',
+        'multi_file_mode_help': '複数のデータファイルの活性曲線を同一グラフ上に描画',
+        'select_files': '比較するファイルを選択',
+        'sample_name': 'サンプル名',
+        'sample_n': 'サンプル{}',
+        'add_file': 'ファイルを追加',
+        'remove_file': 'ファイルを削除',
+        'run_comparison': '比較解析実行',
+        'multi_file_graph_title': '複数サンプル活性曲線比較',
+        'no_files_selected': '比較するファイルが選択されていません',
+        'min_files_required': '比較には2つ以上のファイルが必要です',
+        'legend_position': '凡例の位置',
+        'upper_left': '左上',
+        'lower_right': '右下',
     },
     'en': {
         # UI elements
@@ -212,6 +239,33 @@ TEXTS = {
         'calibration_intercept': 'Intercept',
         'calibration_formula': 'Formula: Conversion(%) = Slope × Intensity + Intercept',
         'calibration_saved': 'Calibration settings saved successfully',
+
+        # Semi-auto mode
+        'measurement_mode': 'Measurement Mode',
+        'standard_mode': 'Standard Mode',
+        'semi_auto_mode': 'Semi-Auto Mode',
+        'num_reactors': 'Number of Reactors',
+        'reactor': 'Reactor',
+        'reactor_n': 'Reactor {}',
+        'comparison': 'Comparison',
+        'comparison_table': 'TX Comparison Table',
+        'semi_auto_mode_help': 'Use when measuring multiple reactors alternately',
+
+        # Multi-file comparison mode
+        'multi_file_mode': 'Multi-File Comparison Mode',
+        'multi_file_mode_help': 'Plot activity curves from multiple data files on the same graph',
+        'select_files': 'Select files to compare',
+        'sample_name': 'Sample Name',
+        'sample_n': 'Sample {}',
+        'add_file': 'Add File',
+        'remove_file': 'Remove File',
+        'run_comparison': 'Run Comparison',
+        'multi_file_graph_title': 'Multi-Sample Activity Curve Comparison',
+        'no_files_selected': 'No files selected for comparison',
+        'min_files_required': 'At least 2 files are required for comparison',
+        'legend_position': 'Legend Position',
+        'upper_left': 'Upper Left',
+        'lower_right': 'Lower Right',
     }
 }
 

@@ -30,8 +30,11 @@ class BenzeneDataProcessor:
             # Default protocol
             self.temp_steps = [500, 450, 400, 350, 300, 250, 200, 150]
             self.hold_times = [20 * 60] * 8  # 20 minutes in seconds for each step
+            self.reactor_ids = [1] * 8  # All steps use reactor 1 by default
             self.ramp_time = 10 * 60  # 10 minutes in seconds
             self.analysis_time = 10 * 60  # Use only last 10 minutes of hold time
+            self.mode = 'standard'
+            self.num_reactors = 1
 
     def set_protocol(self, protocol_settings):
         """
@@ -42,8 +45,11 @@ class BenzeneDataProcessor:
         """
         self.temp_steps = [step.temperature for step in protocol_settings.steps]
         self.hold_times = [step.hold_time * 60 for step in protocol_settings.steps]  # Convert to seconds
+        self.reactor_ids = [step.reactor_id for step in protocol_settings.steps]  # Reactor assignments
         self.ramp_time = protocol_settings.ramp_time * 60  # Convert to seconds
         self.analysis_time = protocol_settings.analysis_time * 60  # Convert to seconds
+        self.mode = getattr(protocol_settings, 'mode', 'standard')
+        self.num_reactors = getattr(protocol_settings, 'num_reactors', 1)
 
     def read_asc_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -83,7 +89,7 @@ class BenzeneDataProcessor:
 
         return np.array(times), np.array(intensities)
 
-    def detect_temperature_steps(self, times: np.ndarray, intensities: np.ndarray) -> Dict[float, Dict]:
+    def detect_temperature_steps(self, times: np.ndarray, intensities: np.ndarray) -> Dict:
         """
         Detect temperature steps based on measurement protocol
 
@@ -92,8 +98,9 @@ class BenzeneDataProcessor:
             intensities: Intensity data
 
         Returns:
-            Dictionary with temperature as key and data dict as value
-            Each data dict contains: 'time_start', 'time_end', 'times', 'intensities', 'avg_intensity'
+            Dictionary with step index as key and data dict as value
+            Each data dict contains: 'temperature', 'reactor_id', 'time_start', 'time_end',
+            'times', 'intensities', 'avg_intensity', 'data_points'
         """
         temp_data = {}
         start_time = times[0]
@@ -101,6 +108,7 @@ class BenzeneDataProcessor:
 
         for i, temp in enumerate(self.temp_steps):
             hold_time = self.hold_times[i]
+            reactor_id = self.reactor_ids[i] if hasattr(self, 'reactor_ids') else 1
 
             # Calculate time window for this temperature
             # Use only the last analysis_time minutes of hold period (to allow gas equilibration)
@@ -117,7 +125,10 @@ class BenzeneDataProcessor:
             if len(step_intensities) > 0:
                 avg_intensity = np.mean(step_intensities)
 
-                temp_data[temp] = {
+                # Use step index as key to support multiple steps at same temperature
+                temp_data[i] = {
+                    'temperature': temp,
+                    'reactor_id': reactor_id,
                     'time_start': step_start,
                     'time_end': step_end,
                     'times': step_times,
@@ -127,7 +138,20 @@ class BenzeneDataProcessor:
                 }
 
             # Update cumulative time for next step
-            cumulative_time += hold_time + self.ramp_time
+            # Determine ramp time: if next step has same temperature, no ramp time needed
+            if i + 1 < len(self.temp_steps):
+                next_temp = self.temp_steps[i + 1]
+                if temp == next_temp:
+                    # Same temperature, different reactor - no ramp time
+                    ramp_for_this_step = 0
+                else:
+                    # Different temperature - use normal ramp time
+                    ramp_for_this_step = self.ramp_time
+            else:
+                # Last step - no next step
+                ramp_for_this_step = 0
+
+            cumulative_time += hold_time + ramp_for_this_step
 
         return temp_data
 
@@ -145,7 +169,7 @@ class BenzeneDataProcessor:
 
     def process_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame, np.ndarray, np.ndarray, Dict]:
         """
-        Complete processing pipeline for a data file
+        Complete processing pipeline for a data file (standard mode)
 
         Args:
             filepath: Path to .asc file
@@ -165,20 +189,20 @@ class BenzeneDataProcessor:
         # Detect temperature steps
         temp_data = self.detect_temperature_steps(times, intensities)
 
-        # Extract temperatures and conversions
+        # Extract temperatures and conversions (for standard mode, use all steps)
         temperatures = []
         conversions = []
         avg_intensities = []
         data_points_list = []
 
-        for temp in self.temp_steps:
-            if temp in temp_data:
-                temperatures.append(temp)
-                avg_intensity = temp_data[temp]['avg_intensity']
-                avg_intensities.append(avg_intensity)
-                conversion = self.intensity_to_conversion(avg_intensity)
-                conversions.append(conversion)
-                data_points_list.append(temp_data[temp]['data_points'])
+        for step_idx in sorted(temp_data.keys()):
+            step_data = temp_data[step_idx]
+            temperatures.append(step_data['temperature'])
+            avg_intensity = step_data['avg_intensity']
+            avg_intensities.append(avg_intensity)
+            conversion = self.intensity_to_conversion(avg_intensity)
+            conversions.append(conversion)
+            data_points_list.append(step_data['data_points'])
 
         # Create detailed DataFrame
         detailed_df = pd.DataFrame({
@@ -189,6 +213,69 @@ class BenzeneDataProcessor:
         })
 
         return np.array(temperatures), np.array(conversions), detailed_df, times, intensities, temp_data
+
+    def process_file_semi_auto(self, filepath: str) -> Tuple[Dict[int, Dict], np.ndarray, np.ndarray, Dict]:
+        """
+        Complete processing pipeline for semi-auto mode (multiple reactors)
+
+        Args:
+            filepath: Path to .asc file
+
+        Returns:
+            Tuple of (reactor_data, times, intensities, temp_data)
+            - reactor_data: Dict[reactor_id: {
+                'temperatures': np.array,
+                'conversions': np.array,
+                'detailed_df': pd.DataFrame
+              }]
+            - times: Raw time data
+            - intensities: Raw intensity data
+            - temp_data: Dictionary with all temperature step data
+        """
+        # Read file
+        times, intensities = self.read_asc_file(filepath)
+
+        # Detect temperature steps
+        temp_data = self.detect_temperature_steps(times, intensities)
+
+        # Group data by reactor
+        reactor_data = {}
+
+        for step_idx in sorted(temp_data.keys()):
+            step = temp_data[step_idx]
+            reactor_id = step['reactor_id']
+
+            if reactor_id not in reactor_data:
+                reactor_data[reactor_id] = {
+                    'temperatures': [],
+                    'conversions': [],
+                    'avg_intensities': [],
+                    'data_points_list': []
+                }
+
+            reactor_data[reactor_id]['temperatures'].append(step['temperature'])
+            avg_intensity = step['avg_intensity']
+            reactor_data[reactor_id]['avg_intensities'].append(avg_intensity)
+            conversion = self.intensity_to_conversion(avg_intensity)
+            reactor_data[reactor_id]['conversions'].append(conversion)
+            reactor_data[reactor_id]['data_points_list'].append(step['data_points'])
+
+        # Convert lists to arrays and create DataFrames
+        for reactor_id in reactor_data:
+            data = reactor_data[reactor_id]
+            data['temperatures'] = np.array(data['temperatures'])
+            data['conversions'] = np.array(data['conversions'])
+            data['detailed_df'] = pd.DataFrame({
+                'Temperature_C': data['temperatures'],
+                'Avg_Intensity': data['avg_intensities'],
+                'Conversion_%': data['conversions'],
+                'Data_Points': data['data_points_list']
+            })
+            # Clean up temporary lists
+            del data['avg_intensities']
+            del data['data_points_list']
+
+        return reactor_data, times, intensities, temp_data
 
 
 def get_file_list(folder_path: str, extension: str = '.asc') -> List[str]:

@@ -8,7 +8,7 @@ import numpy as np
 from modules.language import get_text
 from modules.data_processor import BenzeneDataProcessor, get_file_list
 from modules.fitting import SigmoidFitter
-from modules.visualization import create_activity_plot, create_simple_activity_plot, create_timeseries_plot, save_plot, get_available_fonts
+from modules.visualization import create_activity_plot, create_simple_activity_plot, create_timeseries_plot, create_comparison_plot, create_multi_file_comparison_plot, save_plot, get_available_fonts
 from modules.settings_manager import SettingsManager, ProtocolSettings, TemperatureStep
 
 # Page configuration
@@ -72,6 +72,10 @@ if 'user_preferences_loaded' not in st.session_state:
 
 if 'default_tx' not in st.session_state:
     st.session_state.default_tx = [20, 50, 80]
+if 'multi_file_comparison_done' not in st.session_state:
+    st.session_state.multi_file_comparison_done = False
+if 'legend_position' not in st.session_state:
+    st.session_state.legend_position = 'upper left'
 
 
 def save_user_prefs():
@@ -225,6 +229,40 @@ def main():
             print(f"[DEBUG] Current protocol name: {current_protocol.name}")
             print(f"[DEBUG] Current protocol steps: {len(current_protocol.steps)}")
 
+            # Measurement mode selection
+            mode_options = {
+                text['standard_mode']: 'standard',
+                text['semi_auto_mode']: 'semi_auto'
+            }
+            current_mode = getattr(current_protocol, 'mode', 'standard')
+            mode_display = text['standard_mode'] if current_mode == 'standard' else text['semi_auto_mode']
+
+            selected_mode_display = st.radio(
+                text['measurement_mode'],
+                options=list(mode_options.keys()),
+                index=0 if current_mode == 'standard' else 1,
+                key=f'mode_selector_{pattern_key}',
+                horizontal=True,
+                help=text['semi_auto_mode_help']
+            )
+            selected_mode = mode_options[selected_mode_display]
+            is_semi_auto = selected_mode == 'semi_auto'
+
+            # Number of reactors (only for semi-auto mode)
+            if is_semi_auto:
+                num_reactors = st.number_input(
+                    text['num_reactors'],
+                    min_value=2,
+                    max_value=10,
+                    value=max(2, getattr(current_protocol, 'num_reactors', 2)),
+                    step=1,
+                    key=f'num_reactors_input_{pattern_key}'
+                )
+            else:
+                num_reactors = 1
+
+            st.divider()
+
             # Protocol name
             protocol_name = st.text_input(
                 text['protocol_name'],
@@ -271,7 +309,11 @@ def main():
             steps = []
             for i in range(num_steps):
                 st.markdown(f"**{text['step']} {i+1}**")
-                col_temp, col_hold = st.columns(2)
+
+                if is_semi_auto:
+                    col_temp, col_hold, col_reactor = st.columns([2, 2, 1])
+                else:
+                    col_temp, col_hold = st.columns(2)
 
                 with col_temp:
                     if i < len(current_protocol.steps):
@@ -307,7 +349,25 @@ def main():
                         key=f'hold_{i}_{pattern_key}'
                     )
 
-                steps.append(TemperatureStep(temperature=temp, hold_time=hold))
+                # Reactor selection (only for semi-auto mode)
+                if is_semi_auto:
+                    with col_reactor:
+                        if i < len(current_protocol.steps):
+                            default_reactor = getattr(current_protocol.steps[i], 'reactor_id', 1)
+                        else:
+                            # Alternate reactors by default
+                            default_reactor = (i % num_reactors) + 1
+
+                        reactor_id = st.selectbox(
+                            text['reactor'],
+                            options=list(range(1, num_reactors + 1)),
+                            index=min(default_reactor - 1, num_reactors - 1),
+                            key=f'reactor_{i}_{pattern_key}'
+                        )
+                else:
+                    reactor_id = 1
+
+                steps.append(TemperatureStep(temperature=temp, hold_time=hold, reactor_id=reactor_id))
 
             st.divider()
 
@@ -318,7 +378,9 @@ def main():
                         name=protocol_name,
                         steps=steps,
                         ramp_time=ramp_time,
-                        analysis_time=analysis_time
+                        analysis_time=analysis_time,
+                        mode=selected_mode,
+                        num_reactors=num_reactors
                     )
 
                     # Update current protocol
@@ -377,6 +439,39 @@ def main():
         uploaded_file = st.file_uploader(
             "Upload .asc file (alternative)",
             type=['asc']
+        )
+
+        st.divider()
+
+        # Multi-file comparison mode
+        st.subheader(text['multi_file_mode'])
+        st.caption(text['multi_file_mode_help'])
+
+        # Multi-select for files
+        if len(file_names) > 0:
+            selected_files_for_comparison = st.multiselect(
+                text['select_files'],
+                options=file_names,
+                key='multi_file_selector'
+            )
+        else:
+            selected_files_for_comparison = []
+
+        # Sample names for each selected file
+        multi_file_sample_names = {}
+        for i, fname in enumerate(selected_files_for_comparison):
+            default_name = os.path.splitext(fname)[0]
+            multi_file_sample_names[fname] = st.text_input(
+                f"{text['sample_name']} ({fname})",
+                value=default_name,
+                key=f'sample_name_{i}'
+            )
+
+        # Run multi-file comparison button
+        run_multi_comparison = st.button(
+            text['run_comparison'],
+            type="secondary",
+            key='run_multi_comparison_btn'
         )
 
         st.divider()
@@ -471,6 +566,23 @@ def main():
             )
             st.session_state.legend_fontsize = legend_fontsize
 
+        # Legend position selector
+        legend_pos_options = {
+            text['upper_left']: 'upper left',
+            text['lower_right']: 'lower right'
+        }
+        current_legend_pos = st.session_state.get('legend_position', 'upper left')
+        current_legend_display = text['upper_left'] if current_legend_pos == 'upper left' else text['lower_right']
+
+        legend_pos_display = st.radio(
+            text['legend_position'],
+            options=list(legend_pos_options.keys()),
+            index=0 if current_legend_pos == 'upper left' else 1,
+            horizontal=True,
+            key='legend_position_selector'
+        )
+        st.session_state.legend_position = legend_pos_options[legend_pos_display]
+
         st.divider()
 
         # Calibration curve settings
@@ -524,6 +636,10 @@ def main():
             file_path = selected_file_path
             file_name_base = os.path.splitext(os.path.basename(selected_file_path))[0]
 
+        # Check if semi-auto mode
+        protocol = st.session_state.protocol_settings
+        is_semi_auto_mode = getattr(protocol, 'mode', 'standard') == 'semi_auto'
+
         # Progress indicator
         with st.spinner(text['processing']):
             try:
@@ -534,41 +650,86 @@ def main():
                     conversion_intercept=st.session_state.calibration_intercept,
                     protocol_settings=st.session_state.protocol_settings
                 )
-                temperatures, conversions, detailed_df, times, intensities, temp_data = processor.process_file(file_path)
 
-                # Store raw data first (so timeseries plot can always be shown)
-                st.session_state.temperatures = temperatures
-                st.session_state.conversions = conversions
-                st.session_state.detailed_df = detailed_df
-                st.session_state.times = times
-                st.session_state.intensities = intensities
-                st.session_state.temp_data = temp_data
-                st.session_state.file_name_base = file_name_base
+                if is_semi_auto_mode:
+                    # Semi-auto mode: process for multiple reactors
+                    reactor_data, times, intensities, temp_data = processor.process_file_semi_auto(file_path)
 
-                # Fitting
-                st.info(text['fitting'])
-                fitter = SigmoidFitter()
-                success = fitter.fit(temperatures, conversions)
+                    # Store raw data
+                    st.session_state.reactor_data = reactor_data
+                    st.session_state.times = times
+                    st.session_state.intensities = intensities
+                    st.session_state.temp_data = temp_data
+                    st.session_state.file_name_base = file_name_base
+                    st.session_state.is_semi_auto_mode = True
 
-                if not success:
-                    # Fitting failed, but still show timeseries data
+                    # Fitting for each reactor
+                    st.info(text['fitting'])
+                    fitting_results = {}
+
+                    for reactor_id, data in reactor_data.items():
+                        fitter = SigmoidFitter()
+                        success = fitter.fit(data['temperatures'], data['conversions'])
+
+                        if success:
+                            fitting_params = fitter.get_fitting_params()
+                            tx_results = fitter.calculate_tx_values(all_tx)
+                            temp_fit, conv_fit = fitter.get_fitted_curve()
+
+                            fitting_results[reactor_id] = {
+                                'success': True,
+                                'fitting_params': fitting_params,
+                                'tx_results': tx_results,
+                                'temp_fit': temp_fit,
+                                'conv_fit': conv_fit,
+                                'r_squared': fitting_params['r_squared']
+                            }
+                        else:
+                            fitting_results[reactor_id] = {
+                                'success': False
+                            }
+
+                    st.session_state.fitting_results = fitting_results
                     st.session_state.analysis_done = True
-                    st.session_state.fitting_success = False
-                    st.warning(text['fitting_error'])
+
                 else:
-                    # Calculate TX values
-                    st.info(text['calculating'])
-                    fitting_params = fitter.get_fitting_params()
-                    tx_results = fitter.calculate_tx_values(all_tx)
-                    temp_fit, conv_fit = fitter.get_fitted_curve()
+                    # Standard mode
+                    temperatures, conversions, detailed_df, times, intensities, temp_data = processor.process_file(file_path)
 
-                    # Store fitting results in session state
-                    st.session_state.analysis_done = True
-                    st.session_state.fitting_success = True
-                    st.session_state.fitting_params = fitting_params
-                    st.session_state.tx_results = tx_results
-                    st.session_state.temp_fit = temp_fit
-                    st.session_state.conv_fit = conv_fit
+                    # Store raw data first (so timeseries plot can always be shown)
+                    st.session_state.temperatures = temperatures
+                    st.session_state.conversions = conversions
+                    st.session_state.detailed_df = detailed_df
+                    st.session_state.times = times
+                    st.session_state.intensities = intensities
+                    st.session_state.temp_data = temp_data
+                    st.session_state.file_name_base = file_name_base
+                    st.session_state.is_semi_auto_mode = False
+
+                    # Fitting
+                    st.info(text['fitting'])
+                    fitter = SigmoidFitter()
+                    success = fitter.fit(temperatures, conversions)
+
+                    if not success:
+                        # Fitting failed, but still show timeseries data
+                        st.session_state.analysis_done = True
+                        st.session_state.fitting_success = False
+                        st.warning(text['fitting_error'])
+                    else:
+                        # Calculate TX values
+                        st.info(text['calculating'])
+                        fitting_params = fitter.get_fitting_params()
+                        tx_results = fitter.calculate_tx_values(all_tx)
+                        temp_fit, conv_fit = fitter.get_fitted_curve()
+
+                        # Store fitting results in session state
+                        st.session_state.analysis_done = True
+                        st.session_state.fitting_success = True
+                        st.session_state.fitting_params = fitting_params
+                        st.session_state.tx_results = tx_results
+                        st.session_state.temp_fit = temp_fit
+                        st.session_state.conv_fit = conv_fit
 
                 # Clean up temp file
                 if uploaded_file is not None and os.path.exists(temp_path):
@@ -576,6 +737,8 @@ def main():
 
             except Exception as e:
                 st.error(f"{text['error']}: {str(e)}")
+                import traceback
+                st.error(traceback.format_exc())
                 return
 
     # Display results if analysis is done
@@ -584,6 +747,8 @@ def main():
 
         # Show protocol info
         protocol = st.session_state.protocol_settings
+        is_semi_auto_display = getattr(protocol, 'mode', 'standard') == 'semi_auto'
+
         with st.expander(f"📋 {text['protocol_settings']}: {protocol.name}", expanded=False):
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -596,129 +761,288 @@ def main():
             # Show step details
             steps_data = []
             for i, step in enumerate(protocol.steps):
-                steps_data.append({
+                step_info = {
                     text['step']: f"{i+1}",
                     f"{text['temperature']} (℃)": step.temperature,
                     f"{text['hold_time']}": f"{step.hold_time} min"
-                })
+                }
+                if is_semi_auto_display:
+                    step_info[text['reactor']] = getattr(step, 'reactor_id', 1)
+                steps_data.append(step_info)
             st.table(steps_data)
 
-        # Only show fitting results if fitting succeeded
-        if st.session_state.get('fitting_success', False):
-            # Create two columns for results
-            col1, col2 = st.columns(2)
+        # Check if semi-auto mode results
+        if st.session_state.get('is_semi_auto_mode', False):
+            # Semi-auto mode: display with tabs for each reactor
+            reactor_data = st.session_state.reactor_data
+            fitting_results = st.session_state.fitting_results
+            num_reactors = len(reactor_data)
 
-            with col1:
-                # Fitting parameters
-                st.subheader(text['fitting_results'])
-                params = st.session_state.fitting_params
+            # Create tabs for each reactor + comparison tab
+            tab_names = [text['reactor_n'].format(rid) for rid in sorted(reactor_data.keys())]
+            tab_names.append(text['comparison'])
+            tabs = st.tabs(tab_names)
 
-                st.metric(
-                    text['max_conv'],
-                    f"{params['a_max_conversion']:.2f} %"
-                )
-                st.metric(
-                    text['growth_rate'],
-                    f"{params['b_growth_rate']:.4f}"
-                )
-                st.metric(
-                    text['inflection_temp'],
-                    f"{params['c_inflection_temp']:.1f} {text['temp_unit']}"
-                )
-                st.metric(
-                    text['min_conv'],
-                    f"{params['d_min_conversion']:.2f} %"
-                )
-                st.metric(
-                    text['r_squared'],
-                    f"{params['r_squared']:.4f}"
-                )
+            # Store figures for saving
+            reactor_figs = {}
 
-            with col2:
-                # TX results
-                st.subheader(text['tx_results'])
-                tx_data = []
-                for key, value in sorted(st.session_state.tx_results.items()):
-                    if value is not None:
-                        tx_data.append({
-                            'TX': key,
-                            f"{text['temperature']} ({text['temp_unit']})": f"{value:.1f}"
-                        })
+            # Display each reactor's results in its tab
+            for tab_idx, reactor_id in enumerate(sorted(reactor_data.keys())):
+                with tabs[tab_idx]:
+                    data = reactor_data[reactor_id]
+                    fit_result = fitting_results.get(reactor_id, {})
+
+                    if fit_result.get('success', False):
+                        # Create two columns for results
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            # Fitting parameters
+                            st.subheader(text['fitting_results'])
+                            params = fit_result['fitting_params']
+
+                            st.metric(text['max_conv'], f"{params['a_max_conversion']:.2f} %")
+                            st.metric(text['growth_rate'], f"{params['b_growth_rate']:.4f}")
+                            st.metric(text['inflection_temp'], f"{params['c_inflection_temp']:.1f} {text['temp_unit']}")
+                            st.metric(text['min_conv'], f"{params['d_min_conversion']:.2f} %")
+                            st.metric(text['r_squared'], f"{params['r_squared']:.4f}")
+
+                        with col2:
+                            # TX results
+                            st.subheader(text['tx_results'])
+                            tx_data = []
+                            for key, value in sorted(fit_result['tx_results'].items()):
+                                if value is not None:
+                                    tx_data.append({
+                                        'TX': key,
+                                        f"{text['temperature']} ({text['temp_unit']})": f"{value:.1f}"
+                                    })
+                                else:
+                                    tx_data.append({
+                                        'TX': key,
+                                        f"{text['temperature']} ({text['temp_unit']})": text['cannot_calc']
+                                    })
+                            st.table(tx_data)
+
+                        st.divider()
+
+                        # Activity plot with fitting
+                        st.subheader(text['graph_title'])
+                        fig = create_activity_plot(
+                            data['temperatures'],
+                            data['conversions'],
+                            fit_result['temp_fit'],
+                            fit_result['conv_fit'],
+                            fit_result['tx_results'],
+                            fit_result['r_squared'],
+                            language=st.session_state.language,
+                            font_name=st.session_state.font_name,
+                            label_fontsize=st.session_state.label_fontsize,
+                            tick_fontsize=st.session_state.tick_fontsize,
+                            legend_fontsize=st.session_state.legend_fontsize
+                        )
+                        reactor_figs[reactor_id] = fig
+                        st.pyplot(fig)
+
                     else:
-                        tx_data.append({
-                            'TX': key,
-                            f"{text['temperature']} ({text['temp_unit']})": text['cannot_calc']
-                        })
+                        st.warning(text['fitting_error'])
 
-                st.table(tx_data)
+                        # Simple plot without fitting
+                        st.subheader(text['graph_title'])
+                        fig = create_simple_activity_plot(
+                            data['temperatures'],
+                            data['conversions'],
+                            language=st.session_state.language,
+                            font_name=st.session_state.font_name,
+                            label_fontsize=st.session_state.label_fontsize,
+                            tick_fontsize=st.session_state.tick_fontsize,
+                            legend_fontsize=st.session_state.legend_fontsize
+                        )
+                        reactor_figs[reactor_id] = fig
+                        st.pyplot(fig)
 
+                    # Temperature data table
+                    st.subheader(text['temp_data_title'])
+                    display_df = data['detailed_df'].copy()
+                    display_df.columns = [
+                        f"{text['temperature']} ({text['temp_unit']})",
+                        text['intensity_avg'],
+                        f"{text['conversion']} (%)",
+                        text['data_points']
+                    ]
+                    st.dataframe(display_df, use_container_width=True)
+
+            # Comparison tab
+            with tabs[-1]:
+                # Time-series plot with reactor colors
+                st.subheader(text['timeseries_title'])
+                st.caption(text['timeseries_desc'])
+
+                timeseries_fig = create_timeseries_plot(
+                    st.session_state.times,
+                    st.session_state.intensities,
+                    st.session_state.temp_data,
+                    language=st.session_state.language,
+                    font_name=st.session_state.font_name,
+                    label_fontsize=st.session_state.label_fontsize,
+                    tick_fontsize=st.session_state.tick_fontsize,
+                    semi_auto_mode=True,
+                    num_reactors=num_reactors
+                )
+                st.pyplot(timeseries_fig)
+
+                st.divider()
+
+                # Comparison plot
+                st.subheader(text['graph_title'])
+                comparison_fig = create_comparison_plot(
+                    reactor_data,
+                    fitting_results,
+                    language=st.session_state.language,
+                    font_name=st.session_state.font_name,
+                    label_fontsize=st.session_state.label_fontsize,
+                    tick_fontsize=st.session_state.tick_fontsize,
+                    legend_fontsize=st.session_state.legend_fontsize
+                )
+                st.pyplot(comparison_fig)
+
+                st.divider()
+
+                # TX comparison table
+                st.subheader(text['comparison_table'])
+                comparison_data = []
+                for reactor_id in sorted(reactor_data.keys()):
+                    fit_result = fitting_results.get(reactor_id, {})
+                    row = {text['reactor']: reactor_id}
+                    if fit_result.get('success', False):
+                        for key, value in sorted(fit_result['tx_results'].items()):
+                            row[key] = f"{value:.1f}" if value is not None else "-"
+                    else:
+                        row['Status'] = text['fitting_error']
+                    comparison_data.append(row)
+                st.table(comparison_data)
+
+            # Store the main figure for saving (comparison plot)
+            fig = comparison_fig
+
+        else:
+            # Standard mode display (original code)
+            # Only show fitting results if fitting succeeded
+            if st.session_state.get('fitting_success', False):
+                # Create two columns for results
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    # Fitting parameters
+                    st.subheader(text['fitting_results'])
+                    params = st.session_state.fitting_params
+
+                    st.metric(
+                        text['max_conv'],
+                        f"{params['a_max_conversion']:.2f} %"
+                    )
+                    st.metric(
+                        text['growth_rate'],
+                        f"{params['b_growth_rate']:.4f}"
+                    )
+                    st.metric(
+                        text['inflection_temp'],
+                        f"{params['c_inflection_temp']:.1f} {text['temp_unit']}"
+                    )
+                    st.metric(
+                        text['min_conv'],
+                        f"{params['d_min_conversion']:.2f} %"
+                    )
+                    st.metric(
+                        text['r_squared'],
+                        f"{params['r_squared']:.4f}"
+                    )
+
+                with col2:
+                    # TX results
+                    st.subheader(text['tx_results'])
+                    tx_data = []
+                    for key, value in sorted(st.session_state.tx_results.items()):
+                        if value is not None:
+                            tx_data.append({
+                                'TX': key,
+                                f"{text['temperature']} ({text['temp_unit']})": f"{value:.1f}"
+                            })
+                        else:
+                            tx_data.append({
+                                'TX': key,
+                                f"{text['temperature']} ({text['temp_unit']})": text['cannot_calc']
+                            })
+
+                    st.table(tx_data)
+
+                st.divider()
+
+            # Time-series plot
+            st.subheader(text['timeseries_title'])
+            st.caption(text['timeseries_desc'])
+
+            # Create time-series plot
+            timeseries_fig = create_timeseries_plot(
+                st.session_state.times,
+                st.session_state.intensities,
+                st.session_state.temp_data,
+                language=st.session_state.language,
+                font_name=st.session_state.font_name,
+                label_fontsize=st.session_state.label_fontsize,
+                tick_fontsize=st.session_state.tick_fontsize
+            )
+
+            # Display time-series plot
+            st.pyplot(timeseries_fig)
+
+            # Temperature data table
+            st.subheader(text['temp_data_title'])
+            display_df = st.session_state.detailed_df.copy()
+            display_df.columns = [
+                f"{text['temperature']} ({text['temp_unit']})",
+                text['intensity_avg'],
+                f"{text['conversion']} (%)",
+                text['data_points']
+            ]
+            st.dataframe(display_df, use_container_width=True)
+
+            # Activity plot - show regardless of fitting success
             st.divider()
 
-        # Time-series plot
-        st.subheader(text['timeseries_title'])
-        st.caption(text['timeseries_desc'])
+            # Graph
+            st.subheader(text['graph_title'])
 
-        # Create time-series plot
-        timeseries_fig = create_timeseries_plot(
-            st.session_state.times,
-            st.session_state.intensities,
-            st.session_state.temp_data,
-            language=st.session_state.language,
-            font_name=st.session_state.font_name,
-            label_fontsize=st.session_state.label_fontsize,
-            tick_fontsize=st.session_state.tick_fontsize
-        )
+            # Create plot based on fitting success
+            if st.session_state.get('fitting_success', False):
+                # Create plot with fitting curve
+                fig = create_activity_plot(
+                    st.session_state.temperatures,
+                    st.session_state.conversions,
+                    st.session_state.temp_fit,
+                    st.session_state.conv_fit,
+                    st.session_state.tx_results,
+                    st.session_state.fitting_params['r_squared'],
+                    language=st.session_state.language,
+                    font_name=st.session_state.font_name,
+                    label_fontsize=st.session_state.label_fontsize,
+                    tick_fontsize=st.session_state.tick_fontsize,
+                    legend_fontsize=st.session_state.legend_fontsize
+                )
+            else:
+                # Create simple plot with experimental data only
+                fig = create_simple_activity_plot(
+                    st.session_state.temperatures,
+                    st.session_state.conversions,
+                    language=st.session_state.language,
+                    font_name=st.session_state.font_name,
+                    label_fontsize=st.session_state.label_fontsize,
+                    tick_fontsize=st.session_state.tick_fontsize,
+                    legend_fontsize=st.session_state.legend_fontsize
+                )
 
-        # Display time-series plot
-        st.pyplot(timeseries_fig)
-
-        # Temperature data table
-        st.subheader(text['temp_data_title'])
-        display_df = st.session_state.detailed_df.copy()
-        display_df.columns = [
-            f"{text['temperature']} ({text['temp_unit']})",
-            text['intensity_avg'],
-            f"{text['conversion']} (%)",
-            text['data_points']
-        ]
-        st.dataframe(display_df, width='stretch')
-
-        # Activity plot - show regardless of fitting success
-        st.divider()
-
-        # Graph
-        st.subheader(text['graph_title'])
-
-        # Create plot based on fitting success
-        if st.session_state.get('fitting_success', False):
-            # Create plot with fitting curve
-            fig = create_activity_plot(
-                st.session_state.temperatures,
-                st.session_state.conversions,
-                st.session_state.temp_fit,
-                st.session_state.conv_fit,
-                st.session_state.tx_results,
-                st.session_state.fitting_params['r_squared'],
-                language=st.session_state.language,
-                font_name=st.session_state.font_name,
-                label_fontsize=st.session_state.label_fontsize,
-                tick_fontsize=st.session_state.tick_fontsize,
-                legend_fontsize=st.session_state.legend_fontsize
-            )
-        else:
-            # Create simple plot with experimental data only
-            fig = create_simple_activity_plot(
-                st.session_state.temperatures,
-                st.session_state.conversions,
-                language=st.session_state.language,
-                font_name=st.session_state.font_name,
-                label_fontsize=st.session_state.label_fontsize,
-                tick_fontsize=st.session_state.tick_fontsize,
-                legend_fontsize=st.session_state.legend_fontsize
-            )
-
-        # Display plot
-        st.pyplot(fig)
+            # Display plot
+            st.pyplot(fig)
 
         st.divider()
 
@@ -773,6 +1097,191 @@ def main():
 
                 st.success(f"{text['graph_saved']}: {full_path}")
 
+            except Exception as e:
+                st.error(f"{text['error']}: {str(e)}")
+
+    # Multi-file comparison mode
+    if run_multi_comparison:
+        if len(selected_files_for_comparison) < 2:
+            st.error(text['min_files_required'])
+        else:
+            with st.spinner(text['processing']):
+                try:
+                    # Process each file
+                    multi_sample_data = []
+                    multi_file_detailed_results = {}
+
+                    for fname in selected_files_for_comparison:
+                        # Get full path
+                        file_idx = file_names.index(fname)
+                        fpath = file_list[file_idx]
+                        sample_name = multi_file_sample_names.get(fname, fname)
+
+                        # Create processor
+                        processor = BenzeneDataProcessor(
+                            conversion_slope=st.session_state.calibration_slope,
+                            conversion_intercept=st.session_state.calibration_intercept,
+                            protocol_settings=st.session_state.protocol_settings
+                        )
+
+                        # Process file
+                        temperatures, conversions, detailed_df, times, intensities, temp_data = processor.process_file(fpath)
+
+                        # Fit sigmoid
+                        fitter = SigmoidFitter()
+                        success = fitter.fit(temperatures, conversions)
+
+                        sample_entry = {
+                            'name': sample_name,
+                            'temperatures': temperatures,
+                            'conversions': conversions,
+                            'detailed_df': detailed_df
+                        }
+
+                        if success:
+                            fitting_params = fitter.get_fitting_params()
+                            tx_results = fitter.calculate_tx_values(all_tx)
+                            temp_fit, conv_fit = fitter.get_fitted_curve()
+
+                            sample_entry['temp_fit'] = temp_fit
+                            sample_entry['conv_fit'] = conv_fit
+                            sample_entry['r_squared'] = fitting_params['r_squared']
+                            sample_entry['fitting_params'] = fitting_params
+                            sample_entry['tx_results'] = tx_results
+                            sample_entry['fitting_success'] = True
+                        else:
+                            sample_entry['fitting_success'] = False
+
+                        multi_sample_data.append(sample_entry)
+                        multi_file_detailed_results[sample_name] = sample_entry
+
+                    # Store results in session state
+                    st.session_state.multi_sample_data = multi_sample_data
+                    st.session_state.multi_file_detailed_results = multi_file_detailed_results
+                    st.session_state.multi_file_comparison_done = True
+
+                except Exception as e:
+                    st.error(f"{text['error']}: {str(e)}")
+                    import traceback
+                    st.error(traceback.format_exc())
+
+    # Display multi-file comparison results
+    if st.session_state.get('multi_file_comparison_done', False):
+        st.divider()
+        st.header(text['multi_file_graph_title'])
+
+        multi_sample_data = st.session_state.multi_sample_data
+        multi_file_detailed_results = st.session_state.multi_file_detailed_results
+
+        # Create comparison plot
+        multi_fig = create_multi_file_comparison_plot(
+            multi_sample_data,
+            language=st.session_state.language,
+            font_name=st.session_state.font_name,
+            label_fontsize=st.session_state.label_fontsize,
+            tick_fontsize=st.session_state.tick_fontsize,
+            legend_fontsize=st.session_state.legend_fontsize,
+            legend_loc=st.session_state.legend_position
+        )
+        st.pyplot(multi_fig)
+
+        st.divider()
+
+        # TX comparison table
+        st.subheader(text['comparison_table'])
+        comparison_rows = []
+        for sample in multi_sample_data:
+            row = {text['sample_name']: sample['name']}
+            if sample.get('fitting_success', False):
+                for key, value in sorted(sample['tx_results'].items()):
+                    row[key] = f"{value:.1f}" if value is not None else "-"
+                row['R²'] = f"{sample['r_squared']:.4f}"
+            else:
+                row['Status'] = text['fitting_error']
+            comparison_rows.append(row)
+        st.table(comparison_rows)
+
+        st.divider()
+
+        # Individual sample details in expanders
+        for sample in multi_sample_data:
+            with st.expander(f"📊 {sample['name']}", expanded=False):
+                if sample.get('fitting_success', False):
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.subheader(text['fitting_results'])
+                        params = sample['fitting_params']
+                        st.metric(text['max_conv'], f"{params['a_max_conversion']:.2f} %")
+                        st.metric(text['growth_rate'], f"{params['b_growth_rate']:.4f}")
+                        st.metric(text['inflection_temp'], f"{params['c_inflection_temp']:.1f} {text['temp_unit']}")
+                        st.metric(text['min_conv'], f"{params['d_min_conversion']:.2f} %")
+                        st.metric(text['r_squared'], f"{params['r_squared']:.4f}")
+
+                    with col2:
+                        st.subheader(text['tx_results'])
+                        tx_data = []
+                        for key, value in sorted(sample['tx_results'].items()):
+                            if value is not None:
+                                tx_data.append({
+                                    'TX': key,
+                                    f"{text['temperature']} ({text['temp_unit']})": f"{value:.1f}"
+                                })
+                            else:
+                                tx_data.append({
+                                    'TX': key,
+                                    f"{text['temperature']} ({text['temp_unit']})": text['cannot_calc']
+                                })
+                        st.table(tx_data)
+                else:
+                    st.warning(text['fitting_error'])
+
+                # Data table
+                st.subheader(text['temp_data_title'])
+                display_df = sample['detailed_df'].copy()
+                display_df.columns = [
+                    f"{text['temperature']} ({text['temp_unit']})",
+                    text['intensity_avg'],
+                    f"{text['conversion']} (%)",
+                    text['data_points']
+                ]
+                st.dataframe(display_df, use_container_width=True)
+
+        st.divider()
+
+        # Save multi-file comparison graph
+        st.subheader(text['save_graph'])
+
+        save_col1, save_col2 = st.columns(2)
+
+        with save_col1:
+            multi_save_directory = st.text_input(
+                text['save_folder_custom'],
+                value=st.session_state.default_save_path,
+                key='multi_save_folder_input'
+            )
+
+        with save_col2:
+            multi_save_filename = st.text_input(
+                "File name / ファイル名",
+                value="multi_comparison",
+                key='multi_save_filename'
+            )
+
+            multi_dpi_value = st.number_input(
+                "DPI",
+                min_value=150,
+                max_value=1200,
+                value=600,
+                step=50,
+                key='multi_dpi_input'
+            )
+
+        if st.button(text['save_graph'], type="primary", key='save_multi_graph_btn'):
+            try:
+                full_path = os.path.join(multi_save_directory, f"{multi_save_filename}.png")
+                save_plot(multi_fig, full_path, dpi=multi_dpi_value)
+                st.success(f"{text['graph_saved']}: {full_path}")
             except Exception as e:
                 st.error(f"{text['error']}: {str(e)}")
 

@@ -12,6 +12,7 @@ class TemperatureStep:
     """Single temperature step configuration"""
     temperature: float  # Temperature in °C
     hold_time: int  # Hold time in minutes
+    reactor_id: int = 1  # Reactor ID (1-based, default 1 for standard mode)
 
 
 @dataclass
@@ -21,6 +22,8 @@ class ProtocolSettings:
     steps: List[TemperatureStep]
     ramp_time: int  # Time to move between steps in minutes
     analysis_time: int  # Time window to use for analysis in minutes (from end of hold time)
+    mode: str = "standard"  # "standard" or "semi_auto"
+    num_reactors: int = 1  # Number of reactors (1 for standard, 2+ for semi-auto)
 
 
 class SettingsManager:
@@ -83,7 +86,9 @@ class SettingsManager:
             "name": settings.name,
             "steps": [asdict(step) for step in settings.steps],
             "ramp_time": settings.ramp_time,
-            "analysis_time": settings.analysis_time
+            "analysis_time": settings.analysis_time,
+            "mode": settings.mode,
+            "num_reactors": settings.num_reactors
         }
 
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -110,13 +115,20 @@ class SettingsManager:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            steps = [TemperatureStep(**step) for step in data['steps']]
+            # Handle backward compatibility for steps without reactor_id
+            steps = []
+            for step_data in data['steps']:
+                if 'reactor_id' not in step_data:
+                    step_data['reactor_id'] = 1  # Default to reactor 1
+                steps.append(TemperatureStep(**step_data))
 
             settings = ProtocolSettings(
                 name=data['name'],
                 steps=steps,
                 ramp_time=data['ramp_time'],
-                analysis_time=data['analysis_time']
+                analysis_time=data['analysis_time'],
+                mode=data.get('mode', 'standard'),  # Default to standard for old files
+                num_reactors=data.get('num_reactors', 1)  # Default to 1 for old files
             )
 
             return settings
