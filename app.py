@@ -76,6 +76,10 @@ if 'multi_file_comparison_done' not in st.session_state:
     st.session_state.multi_file_comparison_done = False
 if 'legend_position' not in st.session_state:
     st.session_state.legend_position = 'upper left'
+if 'no_correction_mode' not in st.session_state:
+    st.session_state.no_correction_mode = False
+if 'analysis_mode' not in st.session_state:
+    st.session_state.analysis_mode = 'single_file'
 
 
 def save_user_prefs():
@@ -121,6 +125,23 @@ def main():
     # Sidebar - File selection and parameters
     with st.sidebar:
         st.header(text['sidebar_title'])
+
+        # Analysis mode selector (at the top for visibility)
+        analysis_mode_options = {
+            text['single_file_mode']: 'single_file',
+            text['multi_file_mode']: 'multi_file'
+        }
+        selected_analysis_mode_display = st.radio(
+            text['analysis_mode'],
+            options=list(analysis_mode_options.keys()),
+            index=0 if st.session_state.analysis_mode == 'single_file' else 1,
+            horizontal=True,
+            key='analysis_mode_selector'
+        )
+        st.session_state.analysis_mode = analysis_mode_options[selected_analysis_mode_display]
+        is_multi_file_mode = st.session_state.analysis_mode == 'multi_file'
+
+        st.divider()
 
         # Protocol settings section
         with st.expander(text['protocol_settings'], expanded=False):
@@ -401,7 +422,7 @@ def main():
 
         st.divider()
 
-        # Data folder path setting
+        # Data folder path setting (common to both modes)
         st.subheader(text['file_select'])
         st.text_input(
             text['browse_folder'],
@@ -422,57 +443,60 @@ def main():
         file_list = get_file_list(data_folder, '.asc')
         file_names = [os.path.basename(f) for f in file_list]
 
-        # File selection
-        if len(file_names) > 0:
-            selected_file_name = st.selectbox(
-                text['select_file'],
-                options=file_names
-            )
-            selected_file_idx = file_names.index(selected_file_name)
-            selected_file_path = file_list[selected_file_idx]
-            st.success(f"{text['file_selected']}: {selected_file_name}")
-        else:
-            st.warning(text['no_file_selected'])
-            selected_file_path = None
-
-        # File upload as alternative
-        uploaded_file = st.file_uploader(
-            "Upload .asc file (alternative)",
-            type=['asc']
-        )
-
-        st.divider()
-
-        # Multi-file comparison mode
-        st.subheader(text['multi_file_mode'])
-        st.caption(text['multi_file_mode_help'])
-
-        # Multi-select for files
-        if len(file_names) > 0:
-            selected_files_for_comparison = st.multiselect(
-                text['select_files'],
-                options=file_names,
-                key='multi_file_selector'
-            )
-        else:
-            selected_files_for_comparison = []
-
-        # Sample names for each selected file
+        # Initialize variables
+        selected_file_path = None
+        uploaded_file = None
+        selected_files_for_comparison = []
         multi_file_sample_names = {}
-        for i, fname in enumerate(selected_files_for_comparison):
-            default_name = os.path.splitext(fname)[0]
-            multi_file_sample_names[fname] = st.text_input(
-                f"{text['sample_name']} ({fname})",
-                value=default_name,
-                key=f'sample_name_{i}'
+        run_multi_comparison = False
+
+        # Single file mode UI
+        if not is_multi_file_mode:
+            # File selection
+            if len(file_names) > 0:
+                selected_file_name = st.selectbox(
+                    text['select_file'],
+                    options=file_names
+                )
+                selected_file_idx = file_names.index(selected_file_name)
+                selected_file_path = file_list[selected_file_idx]
+                st.success(f"{text['file_selected']}: {selected_file_name}")
+            else:
+                st.warning(text['no_file_selected'])
+
+            # File upload as alternative
+            uploaded_file = st.file_uploader(
+                "Upload .asc file (alternative)",
+                type=['asc']
             )
 
-        # Run multi-file comparison button
-        run_multi_comparison = st.button(
-            text['run_comparison'],
-            type="secondary",
-            key='run_multi_comparison_btn'
-        )
+        # Multi-file comparison mode UI
+        else:
+            # Multi-select for files
+            if len(file_names) > 0:
+                selected_files_for_comparison = st.multiselect(
+                    text['select_files'],
+                    options=file_names,
+                    key='multi_file_selector'
+                )
+            else:
+                selected_files_for_comparison = []
+
+            # Sample names for each selected file
+            for i, fname in enumerate(selected_files_for_comparison):
+                default_name = os.path.splitext(fname)[0]
+                multi_file_sample_names[fname] = st.text_input(
+                    f"{text['sample_name']} ({fname})",
+                    value=default_name,
+                    key=f'sample_name_{i}'
+                )
+
+            # Run multi-file comparison button
+            run_multi_comparison = st.button(
+                text['run_comparison'],
+                type="primary",
+                key='run_multi_comparison_btn'
+            )
 
         st.divider()
 
@@ -587,22 +611,35 @@ def main():
 
         # Calibration curve settings
         st.subheader(text['calibration_settings'])
-        st.caption(text['calibration_formula'])
 
-        cal_col1, cal_col2 = st.columns(2)
+        # No correction mode checkbox
+        no_correction_mode = st.checkbox(
+            text['no_correction_mode'],
+            value=st.session_state.no_correction_mode,
+            help=text['no_correction_mode_help'],
+            key='no_correction_checkbox'
+        )
+        st.session_state.no_correction_mode = no_correction_mode
 
-        with cal_col1:
-            calibration_slope = st.number_input(
-                text['calibration_slope'],
-                value=st.session_state.calibration_slope,
-                step=0.01,
-                format="%.4f",
-                key='calibration_slope_input',
-                on_change=save_user_prefs
-            )
-            st.session_state.calibration_slope = calibration_slope
+        # Show appropriate formula
+        if no_correction_mode:
+            st.caption(text['calibration_formula'])
+        else:
+            st.caption(text['calibration_formula_auto'])
 
-        with cal_col2:
+        # Slope input (always shown)
+        calibration_slope = st.number_input(
+            text['calibration_slope'],
+            value=st.session_state.calibration_slope,
+            step=0.01,
+            format="%.4f",
+            key='calibration_slope_input',
+            on_change=save_user_prefs
+        )
+        st.session_state.calibration_slope = calibration_slope
+
+        # Intercept input (only shown in no correction mode)
+        if no_correction_mode:
             calibration_intercept = st.number_input(
                 text['calibration_intercept'],
                 value=st.session_state.calibration_intercept,
@@ -615,8 +652,11 @@ def main():
 
         st.divider()
 
-        # Run analysis button
-        run_analysis = st.button(text['run_analysis'], type="primary", width='stretch')
+        # Run analysis button (only for single file mode)
+        if not is_multi_file_mode:
+            run_analysis = st.button(text['run_analysis'], type="primary", key='run_analysis_btn')
+        else:
+            run_analysis = False
 
     # Main content area
     if run_analysis:
@@ -648,7 +688,8 @@ def main():
                 processor = BenzeneDataProcessor(
                     conversion_slope=st.session_state.calibration_slope,
                     conversion_intercept=st.session_state.calibration_intercept,
-                    protocol_settings=st.session_state.protocol_settings
+                    protocol_settings=st.session_state.protocol_settings,
+                    auto_intercept=not st.session_state.no_correction_mode
                 )
 
                 if is_semi_auto_mode:
@@ -1117,11 +1158,12 @@ def main():
                         fpath = file_list[file_idx]
                         sample_name = multi_file_sample_names.get(fname, fname)
 
-                        # Create processor
+                        # Create processor (with auto_intercept per file)
                         processor = BenzeneDataProcessor(
                             conversion_slope=st.session_state.calibration_slope,
                             conversion_intercept=st.session_state.calibration_intercept,
-                            protocol_settings=st.session_state.protocol_settings
+                            protocol_settings=st.session_state.protocol_settings,
+                            auto_intercept=not st.session_state.no_correction_mode
                         )
 
                         # Process file

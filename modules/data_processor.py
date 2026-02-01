@@ -10,7 +10,7 @@ class BenzeneDataProcessor:
     """Process benzene oxidation activity test data from FT-IR measurements"""
 
     def __init__(self, conversion_slope=-995.32, conversion_intercept=101.36,
-                 protocol_settings=None):
+                 protocol_settings=None, auto_intercept=True):
         """
         Initialize data processor
 
@@ -19,9 +19,11 @@ class BenzeneDataProcessor:
             conversion_intercept: Intercept for intensity to conversion calculation
             Formula: Conversion [%] = slope * Intensity + intercept
             protocol_settings: ProtocolSettings object (optional, uses default if None)
+            auto_intercept: If True, auto-calculate intercept so max intensity = 0% conversion
         """
         self.conversion_slope = conversion_slope
         self.conversion_intercept = conversion_intercept
+        self.auto_intercept = auto_intercept
 
         # Load protocol settings
         if protocol_settings is not None:
@@ -189,9 +191,8 @@ class BenzeneDataProcessor:
         # Detect temperature steps
         temp_data = self.detect_temperature_steps(times, intensities)
 
-        # Extract temperatures and conversions (for standard mode, use all steps)
+        # Extract temperatures and average intensities first
         temperatures = []
-        conversions = []
         avg_intensities = []
         data_points_list = []
 
@@ -200,9 +201,22 @@ class BenzeneDataProcessor:
             temperatures.append(step_data['temperature'])
             avg_intensity = step_data['avg_intensity']
             avg_intensities.append(avg_intensity)
+            data_points_list.append(step_data['data_points'])
+
+        # Auto-calculate intercept if enabled
+        if self.auto_intercept and avg_intensities:
+            # Find max intensity (corresponds to 0% conversion - no benzene oxidized)
+            max_intensity = max(avg_intensities)
+            # Calculate intercept so that max_intensity gives 0% conversion
+            # 0 = slope * max_intensity + intercept
+            # intercept = -slope * max_intensity
+            self.conversion_intercept = -self.conversion_slope * max_intensity
+
+        # Calculate conversions with (possibly updated) intercept
+        conversions = []
+        for avg_intensity in avg_intensities:
             conversion = self.intensity_to_conversion(avg_intensity)
             conversions.append(conversion)
-            data_points_list.append(step_data['data_points'])
 
         # Create detailed DataFrame
         detailed_df = pd.DataFrame({
@@ -238,7 +252,7 @@ class BenzeneDataProcessor:
         # Detect temperature steps
         temp_data = self.detect_temperature_steps(times, intensities)
 
-        # Group data by reactor
+        # Group data by reactor (first pass - collect intensities)
         reactor_data = {}
 
         for step_idx in sorted(temp_data.keys()):
@@ -248,7 +262,6 @@ class BenzeneDataProcessor:
             if reactor_id not in reactor_data:
                 reactor_data[reactor_id] = {
                     'temperatures': [],
-                    'conversions': [],
                     'avg_intensities': [],
                     'data_points_list': []
                 }
@@ -256,9 +269,28 @@ class BenzeneDataProcessor:
             reactor_data[reactor_id]['temperatures'].append(step['temperature'])
             avg_intensity = step['avg_intensity']
             reactor_data[reactor_id]['avg_intensities'].append(avg_intensity)
-            conversion = self.intensity_to_conversion(avg_intensity)
-            reactor_data[reactor_id]['conversions'].append(conversion)
             reactor_data[reactor_id]['data_points_list'].append(step['data_points'])
+
+        # Calculate conversions for each reactor
+        for reactor_id in reactor_data:
+            data = reactor_data[reactor_id]
+
+            # Auto-calculate intercept if enabled (per reactor)
+            if self.auto_intercept and data['avg_intensities']:
+                # Find max intensity for this reactor (corresponds to 0% conversion)
+                max_intensity = max(data['avg_intensities'])
+                # Calculate intercept so that max_intensity gives 0% conversion
+                intercept = -self.conversion_slope * max_intensity
+            else:
+                intercept = self.conversion_intercept
+
+            # Calculate conversions with appropriate intercept
+            conversions = []
+            for avg_intensity in data['avg_intensities']:
+                conversion = self.conversion_slope * avg_intensity + intercept
+                conversions.append(conversion)
+
+            data['conversions'] = conversions
 
         # Convert lists to arrays and create DataFrames
         for reactor_id in reactor_data:

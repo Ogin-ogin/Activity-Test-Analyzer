@@ -106,7 +106,14 @@ TEXTS = {
         'calibration_slope': '傾き',
         'calibration_intercept': '切片',
         'calibration_formula': '計算式: 転換率(%) = 傾き × 強度 + 切片',
+        'calibration_formula_auto': '計算式: 転換率(%) = 傾き × (強度 - 最大強度)',
         'calibration_saved': '検量線設定が保存されました',
+        'no_correction_mode': '補正無しモード',
+        'no_correction_mode_help': 'チェック時は設定した切片を使用。未チェック時は最大強度が0%になるよう自動補正。',
+
+        # Analysis mode
+        'analysis_mode': '解析モード',
+        'single_file_mode': '単一ファイル解析',
 
         # Semi-auto mode
         'measurement_mode': '測定モード',
@@ -238,7 +245,14 @@ TEXTS = {
         'calibration_slope': 'Slope',
         'calibration_intercept': 'Intercept',
         'calibration_formula': 'Formula: Conversion(%) = Slope × Intensity + Intercept',
+        'calibration_formula_auto': 'Formula: Conversion(%) = Slope × (Intensity - Max Intensity)',
         'calibration_saved': 'Calibration settings saved successfully',
+        'no_correction_mode': 'No Correction Mode',
+        'no_correction_mode_help': 'When checked, uses fixed intercept. When unchecked, auto-adjusts so max intensity = 0%.',
+
+        # Analysis mode
+        'analysis_mode': 'Analysis Mode',
+        'single_file_mode': 'Single File Analysis',
 
         # Semi-auto mode
         'measurement_mode': 'Measurement Mode',

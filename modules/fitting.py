@@ -8,7 +8,7 @@ from typing import Tuple, Dict, Optional
 
 def sigmoid_function(T: np.ndarray, a: float, b: float, c: float, d: float) -> np.ndarray:
     """
-    4-parameter sigmoid function
+    4-parameter sigmoid function (legacy, kept for compatibility)
 
     Args:
         T: Temperature
@@ -23,9 +23,28 @@ def sigmoid_function(T: np.ndarray, a: float, b: float, c: float, d: float) -> n
     return d + (a - d) / (1 + np.exp(-b * (T - c)))
 
 
+def sigmoid_constrained(T: np.ndarray, b: float, c: float) -> np.ndarray:
+    """
+    2-parameter sigmoid function with fixed asymptotes (0% at -∞, 100% at +∞)
+
+    Args:
+        T: Temperature
+        b: Growth rate (steepness of curve)
+        c: Inflection point temperature (T50)
+
+    Returns:
+        Conversion values (0-100%)
+
+    At T → -∞: returns 0%
+    At T → +∞: returns 100%
+    At T = c: returns 50%
+    """
+    return 100.0 / (1 + np.exp(-b * (T - c)))
+
+
 def calculate_tx(params: np.ndarray, target_conversion: float) -> Optional[float]:
     """
-    Calculate temperature for target conversion rate
+    Calculate temperature for target conversion rate (legacy 4-param version)
 
     Args:
         params: Fitting parameters [a, b, c, d]
@@ -46,11 +65,34 @@ def calculate_tx(params: np.ndarray, target_conversion: float) -> Optional[float
     return tx
 
 
+def calculate_tx_constrained(b: float, c: float, target_conversion: float) -> Optional[float]:
+    """
+    Calculate temperature for target conversion rate (constrained sigmoid)
+
+    Args:
+        b: Growth rate
+        c: Inflection point (T50)
+        target_conversion: Target conversion rate (%)
+
+    Returns:
+        Temperature (TX) or None if out of range
+    """
+    # With fixed asymptotes: a=100, d=0
+    if target_conversion <= 0:
+        return None  # Below lower limit
+    if target_conversion >= 100:
+        return None  # Above upper limit
+
+    # Inverse sigmoid function: T = c - (1/b) * ln(100/x - 1)
+    tx = c - (1/b) * np.log(100.0/target_conversion - 1)
+    return tx
+
+
 class SigmoidFitter:
-    """Sigmoid fitting for activity data"""
+    """Sigmoid fitting for activity data with constrained asymptotes (0% to 100%)"""
 
     def __init__(self):
-        self.popt = None
+        self.popt = None  # [b, c] for constrained sigmoid
         self.pcov = None
         self.r_squared = None
         self.temperatures = None
@@ -58,7 +100,7 @@ class SigmoidFitter:
 
     def fit(self, temperatures: np.ndarray, conversions: np.ndarray) -> bool:
         """
-        Perform sigmoid fitting
+        Perform constrained sigmoid fitting (0% at -∞, 100% at +∞)
 
         Args:
             temperatures: Temperature data
@@ -70,28 +112,29 @@ class SigmoidFitter:
         self.temperatures = np.array(temperatures)
         self.conversions = np.array(conversions)
 
-        # Estimate initial parameters
-        a_init = np.max(self.conversions)  # Maximum conversion
-        d_init = np.min(self.conversions)  # Minimum conversion
+        # Estimate initial parameters for constrained sigmoid
+        # c_init: temperature at ~50% conversion
+        mid_conv = 50.0
         c_init = self.temperatures[
-            np.argmin(np.abs(self.conversions - (a_init + d_init)/2))
-        ]  # Midpoint temperature
-        b_init = 0.02  # Initial growth rate
+            np.argmin(np.abs(self.conversions - mid_conv))
+        ]
+        b_init = 0.05  # Initial growth rate
 
-        initial_guess = [a_init, b_init, c_init, d_init]
+        initial_guess = [b_init, c_init]
 
         try:
-            # Perform curve fitting
+            # Perform curve fitting with constrained sigmoid
             self.popt, self.pcov = curve_fit(
-                sigmoid_function,
+                sigmoid_constrained,
                 self.temperatures,
                 self.conversions,
                 p0=initial_guess,
-                maxfev=5000
+                maxfev=5000,
+                bounds=([0.001, -np.inf], [np.inf, np.inf])  # b must be positive
             )
 
             # Calculate R²
-            y_pred = sigmoid_function(self.temperatures, *self.popt)
+            y_pred = sigmoid_constrained(self.temperatures, *self.popt)
             ss_res = np.sum((self.conversions - y_pred) ** 2)
             ss_tot = np.sum((self.conversions - np.mean(self.conversions)) ** 2)
             self.r_squared = 1 - (ss_res / ss_tot)
@@ -112,11 +155,12 @@ class SigmoidFitter:
         if self.popt is None:
             return None
 
+        # Return parameters with fixed asymptotes for display
         return {
-            'a_max_conversion': self.popt[0],
-            'b_growth_rate': self.popt[1],
-            'c_inflection_temp': self.popt[2],
-            'd_min_conversion': self.popt[3],
+            'a_max_conversion': 100.0,  # Fixed upper asymptote
+            'b_growth_rate': self.popt[0],
+            'c_inflection_temp': self.popt[1],  # Also equals T50
+            'd_min_conversion': 0.0,  # Fixed lower asymptote
             'r_squared': self.r_squared
         }
 
@@ -133,9 +177,10 @@ class SigmoidFitter:
         if self.popt is None:
             return {}
 
+        b, c = self.popt
         tx_results = {}
         for target in target_conversions:
-            tx = calculate_tx(self.popt, target)
+            tx = calculate_tx_constrained(b, c, target)
             tx_results[f"T{int(target)}"] = tx
 
         return tx_results
@@ -162,6 +207,6 @@ class SigmoidFitter:
             temp_min, temp_max = temp_range
 
         temp_fit = np.linspace(temp_min, temp_max, num_points)
-        conv_fit = sigmoid_function(temp_fit, *self.popt)
+        conv_fit = sigmoid_constrained(temp_fit, *self.popt)
 
         return temp_fit, conv_fit
