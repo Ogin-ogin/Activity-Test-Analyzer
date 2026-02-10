@@ -138,7 +138,9 @@ class BenzeneDataProcessor:
                     continue
 
                 # Detect header row to start data section
-                if 'Time' in line and ('Abs' in line or 'secs' in line):
+                # Supports: "Time (secs)","Abs" / "Secs","Abs" / etc.
+                line_lower = line.lower()
+                if ('time' in line_lower or 'sec' in line_lower) and 'abs' in line_lower:
                     data_section = True
                     continue
 
