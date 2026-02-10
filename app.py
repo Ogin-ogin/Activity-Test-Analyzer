@@ -775,22 +775,24 @@ def main():
                     auto_intercept=not st.session_state.no_correction_mode
                 )
 
-                # Check data duration vs protocol duration
-                raw_times, _ = processor.read_file(file_path)
-                if len(raw_times) == 0:
-                    st.error(text['invalid_data'])
-                    st.stop()
-                data_duration = raw_times[-1] - raw_times[0]
-                expected_duration = processor.get_expected_duration()
-                if data_duration < expected_duration * 0.9:  # 10% tolerance
-                    st.warning(text['data_too_short'].format(
-                        data_min=data_duration / 60,
-                        protocol_min=expected_duration / 60
-                    ))
-
                 if is_semi_auto_mode:
                     # Semi-auto mode: process for multiple reactors
                     reactor_data, times, intensities, temp_data = processor.process_file_semi_auto(file_path)
+
+                    # Validate data
+                    if len(times) == 0:
+                        st.error(f"{text['invalid_data']}: {os.path.basename(file_path)}")
+                        st.session_state.analysis_done = False
+                        raise ValueError(text['invalid_data'])
+
+                    # Check data duration vs protocol duration
+                    data_duration = times[-1] - times[0]
+                    expected_duration = processor.get_expected_duration()
+                    if data_duration < expected_duration * 0.9:  # 10% tolerance
+                        st.warning(text['data_too_short'].format(
+                            data_min=data_duration / 60,
+                            protocol_min=expected_duration / 60
+                        ))
 
                     # Check for missing steps
                     total_steps = len(st.session_state.protocol_settings.steps)
@@ -838,6 +840,21 @@ def main():
                 else:
                     # Standard mode
                     temperatures, conversions, detailed_df, times, intensities, temp_data = processor.process_file(file_path)
+
+                    # Validate data
+                    if len(times) == 0:
+                        st.error(f"{text['invalid_data']}: {os.path.basename(file_path)}")
+                        st.session_state.analysis_done = False
+                        raise ValueError(text['invalid_data'])
+
+                    # Check data duration vs protocol duration
+                    data_duration = times[-1] - times[0]
+                    expected_duration = processor.get_expected_duration()
+                    if data_duration < expected_duration * 0.9:  # 10% tolerance
+                        st.warning(text['data_too_short'].format(
+                            data_min=data_duration / 60,
+                            protocol_min=expected_duration / 60
+                        ))
 
                     # Check for missing steps
                     total_steps = len(st.session_state.protocol_settings.steps)
