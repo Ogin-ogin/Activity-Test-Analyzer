@@ -16,6 +16,14 @@ class TemperatureStep:
 
 
 @dataclass
+class CalibrationSettings:
+    """Calibration curve settings"""
+    name: str
+    slope: float  # Slope for intensity to conversion
+    intercept: float  # Intercept (used only in no-correction mode)
+
+
+@dataclass
 class ProtocolSettings:
     """Complete protocol settings"""
     name: str
@@ -40,6 +48,7 @@ class SettingsManager:
         self.settings_dir = settings_dir
         self._ensure_settings_dir()
         self._create_default_settings()
+        self._create_default_calibration()
 
     def _ensure_settings_dir(self):
         """Create settings directory if it doesn't exist"""
@@ -184,6 +193,72 @@ class SettingsManager:
             self._create_default_settings()
             settings = self.load_settings("default.json")
         return settings
+
+    # --- Calibration curve management ---
+
+    def _ensure_calibration_dir(self):
+        """Create calibration directory if it doesn't exist"""
+        cal_dir = os.path.join(self.settings_dir, "calibrations")
+        if not os.path.exists(cal_dir):
+            os.makedirs(cal_dir, exist_ok=True)
+        return cal_dir
+
+    def _create_default_calibration(self):
+        """Create default calibration if it doesn't exist"""
+        cal_dir = self._ensure_calibration_dir()
+        default_path = os.path.join(cal_dir, "default.json")
+        if not os.path.exists(default_path):
+            default_cal = CalibrationSettings(
+                name="Default",
+                slope=-995.32,
+                intercept=101.36
+            )
+            self.save_calibration(default_cal, "default.json")
+
+    def save_calibration(self, cal: CalibrationSettings, filename: str) -> str:
+        """Save calibration settings to JSON file"""
+        cal_dir = self._ensure_calibration_dir()
+        filepath = os.path.join(cal_dir, filename)
+        cal_dict = {"name": cal.name, "slope": cal.slope, "intercept": cal.intercept}
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(cal_dict, f, indent=2, ensure_ascii=False)
+        return filepath
+
+    def load_calibration(self, filename: str) -> Optional[CalibrationSettings]:
+        """Load calibration settings from JSON file"""
+        cal_dir = self._ensure_calibration_dir()
+        filepath = os.path.join(cal_dir, filename)
+        if not os.path.exists(filepath):
+            return None
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return CalibrationSettings(
+                name=data['name'],
+                slope=data['slope'],
+                intercept=data.get('intercept', 0.0)
+            )
+        except Exception as e:
+            print(f"Error loading calibration: {e}")
+            return None
+
+    def list_calibration_files(self) -> List[str]:
+        """Get list of available calibration files"""
+        cal_dir = self._ensure_calibration_dir()
+        files = [f for f in os.listdir(cal_dir) if f.endswith('.json')]
+        return sorted(files)
+
+    def delete_calibration(self, filename: str) -> bool:
+        """Delete a calibration file (cannot delete default)"""
+        cal_dir = self._ensure_calibration_dir()
+        filepath = os.path.join(cal_dir, filename)
+        if os.path.exists(filepath) and filename != "default.json":
+            try:
+                os.remove(filepath)
+                return True
+            except Exception:
+                return False
+        return False
 
     def save_user_preferences(self, preferences: Dict) -> str:
         """

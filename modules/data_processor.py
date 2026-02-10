@@ -53,6 +53,21 @@ class BenzeneDataProcessor:
         self.mode = getattr(protocol_settings, 'mode', 'standard')
         self.num_reactors = getattr(protocol_settings, 'num_reactors', 1)
 
+    def read_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Read data file (auto-detect format from extension: .asc or .csv)
+
+        Args:
+            filepath: Path to data file (.asc or .csv)
+
+        Returns:
+            Tuple of (times, intensities) as numpy arrays
+        """
+        if filepath.lower().endswith('.csv'):
+            return self.read_csv_file(filepath)
+        else:
+            return self.read_asc_file(filepath)
+
     def read_asc_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         """
         Read .asc file from FT-IR measurement
@@ -86,7 +101,47 @@ class BenzeneDataProcessor:
                             times.append(time)
                             intensities.append(intensity)
                         except ValueError:
-                            # Skip lines that can't be parsed as floats
+                            continue
+
+        return np.array(times), np.array(intensities)
+
+    def read_csv_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Read CSV file from FT-IR measurement
+        Format: header rows, then "Time (secs)","Abs" columns
+
+        Args:
+            filepath: Path to .csv file
+
+        Returns:
+            Tuple of (times, intensities) as numpy arrays
+        """
+        times = []
+        intensities = []
+        data_section = False
+
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Detect header row to start data section
+                if 'Time' in line and ('Abs' in line or 'secs' in line):
+                    data_section = True
+                    continue
+
+                # Parse data lines
+                if data_section:
+                    # Remove quotes and split by comma
+                    parts = line.replace('"', '').split(',')
+                    if len(parts) >= 2:
+                        try:
+                            time = float(parts[0].strip())
+                            intensity = float(parts[1].strip())
+                            times.append(time)
+                            intensities.append(intensity)
+                        except ValueError:
                             continue
 
         return np.array(times), np.array(intensities)
@@ -186,7 +241,7 @@ class BenzeneDataProcessor:
             - temp_data: Dictionary with temperature step data
         """
         # Read file
-        times, intensities = self.read_asc_file(filepath)
+        times, intensities = self.read_file(filepath)
 
         # Detect temperature steps
         temp_data = self.detect_temperature_steps(times, intensities)
@@ -247,7 +302,7 @@ class BenzeneDataProcessor:
             - temp_data: Dictionary with all temperature step data
         """
         # Read file
-        times, intensities = self.read_asc_file(filepath)
+        times, intensities = self.read_file(filepath)
 
         # Detect temperature steps
         temp_data = self.detect_temperature_steps(times, intensities)
@@ -310,13 +365,14 @@ class BenzeneDataProcessor:
         return reactor_data, times, intensities, temp_data
 
 
-def get_file_list(folder_path: str, extension: str = '.asc') -> List[str]:
+def get_file_list(folder_path: str, extensions: str = '.asc') -> List[str]:
     """
-    Get list of files with specified extension in a folder
+    Get list of files with specified extension(s) in a folder
 
     Args:
         folder_path: Path to folder
-        extension: File extension to filter (default: '.asc')
+        extensions: File extension(s) to filter. Can be a single string ('.asc')
+                    or comma-separated ('.asc,.csv')
 
     Returns:
         List of file paths
@@ -326,9 +382,12 @@ def get_file_list(folder_path: str, extension: str = '.asc') -> List[str]:
     if not os.path.exists(folder_path):
         return []
 
+    # Support multiple extensions
+    ext_list = [e.strip().lower() for e in extensions.split(',')]
+
     files = []
     for file in os.listdir(folder_path):
-        if file.endswith(extension):
+        if any(file.lower().endswith(ext) for ext in ext_list):
             files.append(os.path.join(folder_path, file))
 
     return sorted(files)

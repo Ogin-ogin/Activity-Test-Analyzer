@@ -9,7 +9,7 @@ from modules.language import get_text
 from modules.data_processor import BenzeneDataProcessor, get_file_list
 from modules.fitting import SigmoidFitter
 from modules.visualization import create_activity_plot, create_simple_activity_plot, create_timeseries_plot, create_comparison_plot, create_multi_file_comparison_plot, save_plot, get_available_fonts
-from modules.settings_manager import SettingsManager, ProtocolSettings, TemperatureStep
+from modules.settings_manager import SettingsManager, ProtocolSettings, TemperatureStep, CalibrationSettings
 
 # Page configuration
 st.set_page_config(
@@ -439,8 +439,8 @@ def main():
         else:
             data_folder = st.session_state.default_data_path
 
-        # Get file list
-        file_list = get_file_list(data_folder, '.asc')
+        # Get file list (support .asc and .csv)
+        file_list = get_file_list(data_folder, '.asc,.csv')
         file_names = [os.path.basename(f) for f in file_list]
 
         # Initialize variables
@@ -612,6 +612,54 @@ def main():
         # Calibration curve settings
         st.subheader(text['calibration_settings'])
 
+        # Calibration selector
+        settings_mgr_cal = st.session_state.settings_manager
+        available_calibrations = settings_mgr_cal.list_calibration_files()
+
+        # Initialize current calibration file if not exists
+        if 'current_calibration_file' not in st.session_state:
+            st.session_state.current_calibration_file = 'default.json'
+
+        cal_options = ['__new__'] + available_calibrations
+        cal_display_names = {
+            '__new__': f"+ {text['new_calibration']}",
+            **{c: c.replace('.json', '') for c in available_calibrations}
+        }
+
+        selected_cal = st.selectbox(
+            text['select_calibration'],
+            options=cal_options,
+            format_func=lambda x: cal_display_names.get(x, x),
+            index=cal_options.index(st.session_state.current_calibration_file) if st.session_state.current_calibration_file in cal_options else 0,
+            key='calibration_selector_widget'
+        )
+
+        # Handle calibration selection change
+        if selected_cal != st.session_state.current_calibration_file:
+            st.session_state.current_calibration_file = selected_cal
+            if selected_cal != '__new__':
+                loaded_cal = settings_mgr_cal.load_calibration(selected_cal)
+                if loaded_cal:
+                    st.session_state.calibration_slope = loaded_cal.slope
+                    st.session_state.calibration_intercept = loaded_cal.intercept
+                    # Clear widget keys to force refresh
+                    for k in ['calibration_slope_input', 'calibration_intercept_input', 'calibration_name_input']:
+                        if k in st.session_state:
+                            del st.session_state[k]
+                    st.rerun()
+
+        # Calibration name input (for saving)
+        if selected_cal == '__new__':
+            cal_name_default = ""
+        else:
+            cal_name_default = selected_cal.replace('.json', '')
+
+        calibration_name = st.text_input(
+            text['calibration_name'],
+            value=cal_name_default,
+            key='calibration_name_input'
+        )
+
         # No correction mode checkbox
         no_correction_mode = st.checkbox(
             text['no_correction_mode'],
@@ -649,6 +697,37 @@ def main():
                 on_change=save_user_prefs
             )
             st.session_state.calibration_intercept = calibration_intercept
+
+        # Save / Delete buttons
+        cal_btn_col1, cal_btn_col2 = st.columns(2)
+
+        with cal_btn_col1:
+            if st.button(text['save_calibration'], key='save_cal_btn'):
+                if calibration_name.strip():
+                    new_cal = CalibrationSettings(
+                        name=calibration_name,
+                        slope=st.session_state.calibration_slope,
+                        intercept=st.session_state.calibration_intercept
+                    )
+                    filename = f"{calibration_name}.json"
+                    settings_mgr_cal.save_calibration(new_cal, filename)
+                    st.session_state.current_calibration_file = filename
+                    st.success(text['calibration_saved_msg'])
+                    st.rerun()
+                else:
+                    st.error(text['enter_calibration_name'])
+
+        with cal_btn_col2:
+            if selected_cal != '__new__' and selected_cal != 'default.json':
+                if st.button(text['delete_calibration'], key='del_cal_btn'):
+                    settings_mgr_cal.delete_calibration(selected_cal)
+                    st.session_state.current_calibration_file = 'default.json'
+                    loaded_cal = settings_mgr_cal.load_calibration('default.json')
+                    if loaded_cal:
+                        st.session_state.calibration_slope = loaded_cal.slope
+                        st.session_state.calibration_intercept = loaded_cal.intercept
+                    st.success(text['calibration_deleted_msg'])
+                    st.rerun()
 
         st.divider()
 

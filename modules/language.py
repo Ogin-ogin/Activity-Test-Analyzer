@@ -110,6 +110,14 @@ TEXTS = {
         'calibration_saved': '検量線設定が保存されました',
         'no_correction_mode': '補正無しモード',
         'no_correction_mode_help': 'チェック時は設定した切片を使用。未チェック時は最大強度が0%になるよう自動補正。',
+        'select_calibration': '検量線を選択',
+        'new_calibration': '新規作成',
+        'calibration_name': '検量線名',
+        'save_calibration': '検量線を保存',
+        'delete_calibration': '検量線を削除',
+        'calibration_saved_msg': '検量線が保存されました',
+        'calibration_deleted_msg': '検量線が削除されました',
+        'enter_calibration_name': '検量線名を入力してください',
 
         # Analysis mode
         'analysis_mode': '解析モード',
@@ -249,6 +257,14 @@ TEXTS = {
         'calibration_saved': 'Calibration settings saved successfully',
         'no_correction_mode': 'No Correction Mode',
         'no_correction_mode_help': 'When checked, uses fixed intercept. When unchecked, auto-adjusts so max intensity = 0%.',
+        'select_calibration': 'Select Calibration',
+        'new_calibration': 'New Calibration',
+        'calibration_name': 'Calibration Name',
+        'save_calibration': 'Save Calibration',
+        'delete_calibration': 'Delete Calibration',
+        'calibration_saved_msg': 'Calibration saved',
+        'calibration_deleted_msg': 'Calibration deleted',
+        'enter_calibration_name': 'Please enter calibration name',
 
         # Analysis mode
         'analysis_mode': 'Analysis Mode',
