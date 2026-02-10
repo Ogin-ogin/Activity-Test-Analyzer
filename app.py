@@ -771,9 +771,25 @@ def main():
                     auto_intercept=not st.session_state.no_correction_mode
                 )
 
+                # Check data duration vs protocol duration
+                raw_times, _ = processor.read_file(file_path)
+                data_duration = (raw_times[-1] - raw_times[0]) if len(raw_times) > 0 else 0
+                expected_duration = processor.get_expected_duration()
+                if data_duration < expected_duration * 0.9:  # 10% tolerance
+                    st.warning(text['data_too_short'].format(
+                        data_min=data_duration / 60,
+                        protocol_min=expected_duration / 60
+                    ))
+
                 if is_semi_auto_mode:
                     # Semi-auto mode: process for multiple reactors
                     reactor_data, times, intensities, temp_data = processor.process_file_semi_auto(file_path)
+
+                    # Check for missing steps
+                    total_steps = len(st.session_state.protocol_settings.steps)
+                    detected_steps = len(temp_data)
+                    if detected_steps < total_steps:
+                        st.warning(text['missing_steps'].format(detected=detected_steps, total=total_steps))
 
                     # Store raw data
                     st.session_state.reactor_data = reactor_data
@@ -815,6 +831,12 @@ def main():
                 else:
                     # Standard mode
                     temperatures, conversions, detailed_df, times, intensities, temp_data = processor.process_file(file_path)
+
+                    # Check for missing steps
+                    total_steps = len(st.session_state.protocol_settings.steps)
+                    detected_steps = len(temp_data)
+                    if detected_steps < total_steps:
+                        st.warning(text['missing_steps'].format(detected=detected_steps, total=total_steps))
 
                     # Store raw data first (so timeseries plot can always be shown)
                     st.session_state.temperatures = temperatures

@@ -53,6 +53,17 @@ class BenzeneDataProcessor:
         self.mode = getattr(protocol_settings, 'mode', 'standard')
         self.num_reactors = getattr(protocol_settings, 'num_reactors', 1)
 
+    def get_expected_duration(self) -> float:
+        """Calculate expected total duration of the protocol in seconds"""
+        total = 0
+        for i, hold_time in enumerate(self.hold_times):
+            total += hold_time
+            if i + 1 < len(self.temp_steps):
+                next_temp = self.temp_steps[i + 1]
+                if self.temp_steps[i] != next_temp:
+                    total += self.ramp_time
+        return total
+
     def read_file(self, filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         """
         Read data file (auto-detect format from extension: .asc or .csv)

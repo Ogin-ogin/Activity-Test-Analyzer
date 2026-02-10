@@ -118,6 +118,8 @@ TEXTS = {
         'calibration_saved_msg': '検量線が保存されました',
         'calibration_deleted_msg': '検量線が削除されました',
         'enter_calibration_name': '検量線名を入力してください',
+        'data_too_short': 'データの時間長（{data_min:.0f}分）がプロトコルの必要時間（{protocol_min:.0f}分）より短いです。パターン設定が正しいか確認してください。',
+        'missing_steps': '検出されなかったステップがあります（{detected}/{total}ステップ）。',
 
         # Analysis mode
         'analysis_mode': '解析モード',
@@ -265,6 +267,8 @@ TEXTS = {
         'calibration_saved_msg': 'Calibration saved',
         'calibration_deleted_msg': 'Calibration deleted',
         'enter_calibration_name': 'Please enter calibration name',
+        'data_too_short': 'Data duration ({data_min:.0f} min) is shorter than protocol requires ({protocol_min:.0f} min). Please verify the pattern settings.',
+        'missing_steps': 'Some steps were not detected ({detected}/{total} steps).',
 
         # Analysis mode
         'analysis_mode': 'Analysis Mode',
