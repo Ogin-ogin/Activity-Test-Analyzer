@@ -642,11 +642,15 @@ def main():
                 if loaded_cal:
                     st.session_state.calibration_slope = loaded_cal.slope
                     st.session_state.calibration_intercept = loaded_cal.intercept
-                    # Clear widget keys to force refresh
-                    for k in ['calibration_slope_input', 'calibration_intercept_input', 'calibration_name_input']:
-                        if k in st.session_state:
-                            del st.session_state[k]
+                    # Directly set widget state values for reliable update
+                    st.session_state.calibration_slope_input = loaded_cal.slope
+                    st.session_state.calibration_intercept_input = loaded_cal.intercept
+                    st.session_state.calibration_name_input = loaded_cal.name
                     st.rerun()
+            else:
+                # New calibration - clear the name
+                st.session_state.calibration_name_input = ""
+                st.rerun()
 
         # Calibration name input (for saving)
         if selected_cal == '__new__':
@@ -773,7 +777,10 @@ def main():
 
                 # Check data duration vs protocol duration
                 raw_times, _ = processor.read_file(file_path)
-                data_duration = (raw_times[-1] - raw_times[0]) if len(raw_times) > 0 else 0
+                if len(raw_times) == 0:
+                    st.error(text['invalid_data'])
+                    st.stop()
+                data_duration = raw_times[-1] - raw_times[0]
                 expected_duration = processor.get_expected_duration()
                 if data_duration < expected_duration * 0.9:  # 10% tolerance
                     st.warning(text['data_too_short'].format(

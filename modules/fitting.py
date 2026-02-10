@@ -112,6 +112,9 @@ class SigmoidFitter:
         self.temperatures = np.array(temperatures)
         self.conversions = np.array(conversions)
 
+        if len(self.temperatures) < 2:
+            return False
+
         # Estimate initial parameters for constrained sigmoid
         # c_init: temperature at ~50% conversion
         mid_conv = 50.0

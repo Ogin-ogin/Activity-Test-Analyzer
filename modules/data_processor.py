@@ -171,6 +171,8 @@ class BenzeneDataProcessor:
             'times', 'intensities', 'avg_intensity', 'data_points'
         """
         temp_data = {}
+        if len(times) == 0:
+            return temp_data
         start_time = times[0]
         cumulative_time = 0
 
