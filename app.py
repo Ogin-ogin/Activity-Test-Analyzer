@@ -781,7 +781,17 @@ def main():
 
                     # Validate data
                     if len(times) == 0:
+                        # Diagnostic info
+                        file_ext = os.path.splitext(file_path)[1].lower()
+                        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as diag_f:
+                                first_lines = [diag_f.readline().strip() for _ in range(5)]
+                            preview = '\n'.join(first_lines)
+                        except Exception:
+                            preview = "(読み取り不可)"
                         st.error(f"{text['invalid_data']}: {os.path.basename(file_path)}")
+                        st.error(f"パス: {file_path}\n拡張子: {file_ext}, サイズ: {file_size} bytes\n先頭5行:\n{preview}")
                         st.session_state.analysis_done = False
                         raise ValueError(text['invalid_data'])
 
@@ -843,7 +853,17 @@ def main():
 
                     # Validate data
                     if len(times) == 0:
+                        # Diagnostic info
+                        file_ext = os.path.splitext(file_path)[1].lower()
+                        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as diag_f:
+                                first_lines = [diag_f.readline().strip() for _ in range(5)]
+                            preview = '\n'.join(first_lines)
+                        except Exception:
+                            preview = "(読み取り不可)"
                         st.error(f"{text['invalid_data']}: {os.path.basename(file_path)}")
+                        st.error(f"パス: {file_path}\n拡張子: {file_ext}, サイズ: {file_size} bytes\n先頭5行:\n{preview}")
                         st.session_state.analysis_done = False
                         raise ValueError(text['invalid_data'])
 
